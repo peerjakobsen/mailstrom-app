@@ -112,50 +112,72 @@ class GmailService {
     void Function(int completed, int total)? onProgress,
     bool Function()? shouldCancel,
   }) async {
-    final api = await _getApi();
-    for (var i = 0; i < ids.length; i++) {
-      if (shouldCancel?.call() == true) break;
-      await _rateLimiter.acquire(5);
-      await retryWithBackoff(() async {
-        await api.users.messages.trash('me', ids[i]);
-      });
-      onProgress?.call(i + 1, ids.length);
-    }
+    await _batchModify(
+      ids,
+      addLabelIds: ['TRASH'],
+      onProgress: onProgress,
+      shouldCancel: shouldCancel,
+    );
   }
 
   Future<void> archiveMessages(
     List<String> ids, {
     void Function(int completed, int total)? onProgress,
+    bool Function()? shouldCancel,
   }) async {
-    final api = await _getApi();
-    for (var i = 0; i < ids.length; i++) {
-      await _rateLimiter.acquire(5);
-      await retryWithBackoff(() async {
-        await api.users.messages.modify(
-          ModifyMessageRequest(removeLabelIds: ['INBOX']),
-          'me',
-          ids[i],
-        );
-      });
-      onProgress?.call(i + 1, ids.length);
-    }
+    await _batchModify(
+      ids,
+      removeLabelIds: ['INBOX'],
+      onProgress: onProgress,
+      shouldCancel: shouldCancel,
+    );
   }
 
   Future<void> markAsRead(
     List<String> ids, {
     void Function(int completed, int total)? onProgress,
+    bool Function()? shouldCancel,
+  }) async {
+    await _batchModify(
+      ids,
+      removeLabelIds: ['UNREAD'],
+      onProgress: onProgress,
+      shouldCancel: shouldCancel,
+    );
+  }
+
+  static const _batchChunkSize = 1000;
+
+  Future<void> _batchModify(
+    List<String> ids, {
+    List<String>? addLabelIds,
+    List<String>? removeLabelIds,
+    void Function(int completed, int total)? onProgress,
+    bool Function()? shouldCancel,
   }) async {
     final api = await _getApi();
-    for (var i = 0; i < ids.length; i++) {
-      await _rateLimiter.acquire(5);
+    var processed = 0;
+
+    for (var i = 0; i < ids.length; i += _batchChunkSize) {
+      if (shouldCancel?.call() == true) break;
+
+      final end = (i + _batchChunkSize).clamp(0, ids.length);
+      final chunk = ids.sublist(i, end);
+
+      await _rateLimiter.acquire(25);
       await retryWithBackoff(() async {
-        await api.users.messages.modify(
-          ModifyMessageRequest(removeLabelIds: ['UNREAD']),
+        await api.users.messages.batchModify(
+          BatchModifyMessagesRequest(
+            ids: chunk,
+            addLabelIds: addLabelIds,
+            removeLabelIds: removeLabelIds,
+          ),
           'me',
-          ids[i],
         );
       });
-      onProgress?.call(i + 1, ids.length);
+
+      processed += chunk.length;
+      onProgress?.call(processed, ids.length);
     }
   }
 

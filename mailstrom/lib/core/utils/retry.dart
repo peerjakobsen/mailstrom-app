@@ -1,8 +1,10 @@
+import 'package:flutter/foundation.dart';
+
 import '../exceptions/gmail_api_exception.dart';
 
 Future<T> retryWithBackoff<T>(
   Future<T> Function() fn, {
-  int maxRetries = 3,
+  int maxRetries = 5,
 }) async {
   var attempt = 0;
   while (true) {
@@ -19,18 +21,19 @@ Future<T> retryWithBackoff<T>(
         );
       }
 
-      if ((statusCode == 429 ||
-              (statusCode != null && statusCode >= 500)) &&
+      final isThrottled = statusCode == 429;
+      final isServerError = statusCode != null && statusCode >= 500;
+
+      if ((isThrottled || isServerError || statusCode == null) &&
           attempt < maxRetries) {
         attempt++;
-        final delay = Duration(milliseconds: 1000 * (1 << attempt));
-        await Future<void>.delayed(delay);
-        continue;
-      }
-
-      if (attempt < maxRetries && statusCode == null) {
-        attempt++;
-        final delay = Duration(milliseconds: 1000 * (1 << attempt));
+        // Use longer initial backoff for 429 (5s base) vs others (1s base)
+        final baseMs = isThrottled ? 5000 : 1000;
+        final delay = Duration(milliseconds: baseMs * (1 << (attempt - 1)));
+        debugPrint(
+          'Retry $attempt/$maxRetries after ${delay.inSeconds}s '
+          '(status: ${statusCode ?? 'unknown'})',
+        );
         await Future<void>.delayed(delay);
         continue;
       }

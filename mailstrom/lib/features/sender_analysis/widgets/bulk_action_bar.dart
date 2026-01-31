@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/database/database.dart';
+import '../../../core/exceptions/error_mapper.dart';
 import '../../../core/services/gmail_service.dart';
 import '../../sync/providers/sync_provider.dart';
 import '../providers/sender_providers.dart';
@@ -248,6 +249,8 @@ class BulkActionBar extends ConsumerWidget {
     // Small delay to let the dialog render
     await Future<void>.delayed(const Duration(milliseconds: 50));
 
+    final failures = <String, String>{};
+
     for (final sender in senders) {
       if (cancelled) break;
       try {
@@ -270,7 +273,8 @@ class BulkActionBar extends ConsumerWidget {
 
         await postProcess(ref, sender, emailIds);
       } catch (e) {
-        // Continue with other senders on failure
+        final senderName = sender.displayName ?? sender.email;
+        failures[senderName] = ErrorMapper.userMessage(e);
       }
     }
 
@@ -286,6 +290,54 @@ class BulkActionBar extends ConsumerWidget {
       ref.read(senderSelectionProvider.notifier).clear();
       ref.read(selectedSenderProvider.notifier).state = null;
     }
+
+    if (failures.isNotEmpty && context.mounted) {
+      _showFailuresDialog(context, actionLabel, failures);
+    }
+  }
+
+  void _showFailuresDialog(
+    BuildContext context,
+    String actionLabel,
+    Map<String, String> failures,
+  ) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('$actionLabel failed for some senders'),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 300, maxWidth: 400),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${failures.length} sender${failures.length == 1 ? '' : 's'} could not be processed:',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                const SizedBox(height: 8),
+                ...failures.entries.map(
+                  (entry) => Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      '\u2022 ${entry.key}: ${entry.value}',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 
   // Mutable refs for updating the progress dialog from async code

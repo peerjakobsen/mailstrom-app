@@ -24,17 +24,22 @@ Bulk-clean your Gmail inbox by sender — see who's flooding you, unsubscribe, a
 - **API:** Gmail API with OAuth 2.0
 - **Platform:** macOS (Windows/Linux planned)
 
-## Getting Started
+## Install
+
+1. Download `Mailstrom.dmg` from the [latest release](https://github.com/peerjakobsen/mailstrom-app/releases/latest)
+2. Open the DMG and drag `mailstrom.app` to Applications
+3. Remove the quarantine flag (required for unsigned apps):
+   ```bash
+   xattr -cr /Applications/mailstrom.app
+   ```
+4. Open the app from Applications
+
+## Development
 
 ```bash
-# Clone the repo
-git clone https://github.com/mentilead/mailstrom-app.git
+git clone https://github.com/peerjakobsen/mailstrom-app.git
 cd mailstrom-app/mailstrom
-
-# Install dependencies
 flutter pub get
-
-# Run the app
 flutter run -d macos
 ```
 
