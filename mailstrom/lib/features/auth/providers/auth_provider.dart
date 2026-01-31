@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:googleapis_auth/googleapis_auth.dart';
 
+import '../../../core/database/database.dart';
 import '../../../core/exceptions/auth_exception.dart';
 import '../../../core/models/auth_state.dart';
 import '../../../core/services/auth_service.dart';
@@ -39,7 +40,9 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
 
   Future<void> signOut() async {
     final authService = ref.read(authServiceProvider);
+    final db = ref.read(databaseProvider);
     await authService.signOut();
+    await db.clearAll();
     state = const AsyncValue.data(AuthState.unauthenticated());
   }
 }

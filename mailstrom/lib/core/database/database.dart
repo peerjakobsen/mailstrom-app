@@ -25,6 +25,12 @@ class AppDatabase extends _$AppDatabase {
   @override
   int get schemaVersion => 3;
 
+  Future<void> clearAll() async {
+    await delete(senderTable).go();
+    await delete(emailSummaryTable).go();
+    await delete(syncStateTable).go();
+  }
+
   @override
   MigrationStrategy get migration {
     return MigrationStrategy(

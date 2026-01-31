@@ -8,13 +8,19 @@ class RateLimiter {
         _lastRefill = DateTime.now();
 
   Future<void> acquire(int units) async {
-    _refill();
-    while (_availableUnits < units) {
-      final waitMs = ((units - _availableUnits) / unitsPerSecond * 1000).ceil();
-      await Future<void>.delayed(Duration(milliseconds: waitMs));
+    var remaining = units;
+    while (remaining > 0) {
+      final chunk = remaining.clamp(0, unitsPerSecond);
       _refill();
+      while (_availableUnits < chunk) {
+        final waitMs =
+            ((chunk - _availableUnits) / unitsPerSecond * 1000).ceil();
+        await Future<void>.delayed(Duration(milliseconds: waitMs));
+        _refill();
+      }
+      _availableUnits -= chunk;
+      remaining -= chunk;
     }
-    _availableUnits -= units;
   }
 
   void _refill() {

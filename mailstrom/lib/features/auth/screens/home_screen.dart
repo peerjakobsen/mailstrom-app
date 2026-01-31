@@ -64,10 +64,29 @@ class HomeScreen extends ConsumerWidget {
               ),
               IconButton(
                 icon: const Icon(Icons.logout),
-                tooltip: 'Sign out',
-                onPressed: () => ref
-                    .read(authNotifierProvider.notifier)
-                    .signOut(),
+                tooltip: 'Disconnect',
+                onPressed: () async {
+                  final confirmed = await showDialog<bool>(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text('Disconnect from Gmail?'),
+                      content: const Text("You'll need to sign in again."),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(false),
+                          child: const Text('Cancel'),
+                        ),
+                        FilledButton(
+                          onPressed: () => Navigator.of(context).pop(true),
+                          child: const Text('Disconnect'),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (confirmed == true) {
+                    ref.read(authNotifierProvider.notifier).signOut();
+                  }
+                },
               ),
               const SizedBox(width: 8),
             ],
