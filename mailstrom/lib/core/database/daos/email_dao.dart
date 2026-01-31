@@ -81,4 +81,10 @@ class EmailDao extends DatabaseAccessor<AppDatabase>
   Future<void> deleteAllEmails() {
     return delete(emailSummaryTable).go();
   }
+
+  Future<void> markEmailsAsReadBySender(String senderEmail) {
+    return (update(emailSummaryTable)
+          ..where((t) => t.senderEmail.equals(senderEmail)))
+        .write(const EmailSummaryTableCompanion(isRead: Value(true)));
+  }
 }

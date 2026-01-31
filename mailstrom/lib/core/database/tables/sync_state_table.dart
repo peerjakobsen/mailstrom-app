@@ -9,6 +9,8 @@ class SyncStateTable extends Table {
       integer().withDefault(const Constant(0))();
   IntColumn get processedEmails =>
       integer().withDefault(const Constant(0))();
+  IntColumn get deletedEmailsCount =>
+      integer().withDefault(const Constant(0))();
 
   @override
   Set<Column> get primaryKey => {id};

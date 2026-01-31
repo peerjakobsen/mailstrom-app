@@ -23,7 +23,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration {
@@ -43,12 +43,26 @@ class AppDatabase extends _$AppDatabase {
           'CREATE INDEX IF NOT EXISTS idx_sender_domain '
           'ON sender_table (domain)',
         );
+        await customStatement(
+          'CREATE INDEX IF NOT EXISTS idx_sender_category '
+          'ON sender_table (category)',
+        );
       },
       onUpgrade: (Migrator m, int from, int to) async {
         if (from < 2) {
           await customStatement(
             'ALTER TABLE sender_table '
             'ADD COLUMN is_unsubscribed INTEGER NOT NULL DEFAULT 0',
+          );
+        }
+        if (from < 3) {
+          await customStatement(
+            'ALTER TABLE sync_state_table '
+            'ADD COLUMN deleted_emails_count INTEGER NOT NULL DEFAULT 0',
+          );
+          await customStatement(
+            'CREATE INDEX IF NOT EXISTS idx_sender_category '
+            'ON sender_table (category)',
           );
         }
       },

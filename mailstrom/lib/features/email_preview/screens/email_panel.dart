@@ -14,6 +14,12 @@ class EmailPanel extends ConsumerWidget {
     final selectedSender = ref.watch(selectedSenderProvider);
     final selectedEmailId = ref.watch(selectedEmailIdProvider);
 
+    ref.listen<String?>(selectedSenderProvider, (previous, next) {
+      if (previous != next) {
+        ref.read(selectedEmailIdProvider.notifier).state = null;
+      }
+    });
+
     if (selectedSender == null) {
       return Center(
         child: Column(

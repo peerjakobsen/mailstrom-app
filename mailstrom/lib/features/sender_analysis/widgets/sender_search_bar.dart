@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/models/email_category.dart';
 import '../providers/sender_providers.dart';
 
 class SenderSearchBar extends ConsumerStatefulWidget {
@@ -27,6 +28,10 @@ class _SenderSearchBarState extends ConsumerState<SenderSearchBar> {
   Widget build(BuildContext context) {
     final sort = ref.watch(senderSortProvider);
     final filter = ref.watch(senderFilterProvider);
+    final categoryFilter = ref.watch(senderCategoryFilterProvider);
+    final unsubscribeReady = ref.watch(unsubscribeReadyModeProvider);
+    final searchFocus = ref.watch(searchFocusProvider);
+    final colorScheme = Theme.of(context).colorScheme;
 
     return Padding(
       padding: const EdgeInsets.all(8),
@@ -38,6 +43,7 @@ class _SenderSearchBarState extends ConsumerState<SenderSearchBar> {
               Expanded(
                 child: TextField(
                   controller: _controller,
+                  focusNode: searchFocus,
                   decoration: InputDecoration(
                     hintText: 'Search senders...',
                     prefixIcon: const Icon(Icons.search, size: 20),
@@ -116,6 +122,94 @@ class _SenderSearchBarState extends ConsumerState<SenderSearchBar> {
               ],
             ),
           ),
+          const SizedBox(height: 6),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: PopupMenuButton<EmailCategory?>(
+              initialValue: categoryFilter,
+              onSelected: (value) {
+                ref.read(senderCategoryFilterProvider.notifier).state = value;
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem<EmailCategory?>(
+                  value: null,
+                  child: Text('All categories'),
+                ),
+                ...EmailCategory.values
+                    .where((c) => c != EmailCategory.unknown)
+                    .map(
+                      (c) => PopupMenuItem<EmailCategory?>(
+                        value: c,
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 10,
+                              height: 10,
+                              decoration: BoxDecoration(
+                                color: c.color,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(c.displayName),
+                          ],
+                        ),
+                      ),
+                    ),
+              ],
+              child: Chip(
+                avatar: categoryFilter != null
+                    ? Container(
+                        width: 10,
+                        height: 10,
+                        decoration: BoxDecoration(
+                          color: categoryFilter.color,
+                          shape: BoxShape.circle,
+                        ),
+                      )
+                    : null,
+                label: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      categoryFilter?.displayName ?? 'All categories',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                    const SizedBox(width: 4),
+                    const Icon(Icons.arrow_drop_down, size: 18),
+                  ],
+                ),
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FilterChip(
+              avatar: Icon(
+                Icons.unsubscribe_outlined,
+                size: 16,
+                color: unsubscribeReady
+                    ? colorScheme.onError
+                    : colorScheme.onSurfaceVariant,
+              ),
+              label: Text(
+                'Unsubscribe Ready',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: unsubscribeReady ? FontWeight.w600 : null,
+                  color: unsubscribeReady ? colorScheme.onError : null,
+                ),
+              ),
+              selected: unsubscribeReady,
+              selectedColor: colorScheme.error,
+              onSelected: (_) {
+                ref.read(unsubscribeReadyModeProvider.notifier).state = !unsubscribeReady;
+              },
+              visualDensity: VisualDensity.compact,
+            ),
+          ),
         ],
       ),
     );
@@ -136,4 +230,5 @@ class _SenderSearchBarState extends ConsumerState<SenderSearchBar> {
       visualDensity: VisualDensity.compact,
     );
   }
+
 }

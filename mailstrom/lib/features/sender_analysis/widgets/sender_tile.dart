@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/database/database.dart';
+import '../../../core/models/email_category.dart';
+import '../../email_preview/providers/email_providers.dart';
 import '../providers/sender_providers.dart';
 
 class SenderTile extends ConsumerWidget {
@@ -48,6 +50,8 @@ class SenderTile extends ConsumerWidget {
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          _CategoryBadge(category: EmailCategory.fromString(sender.category)),
+          const SizedBox(width: 4),
           IconButton(
             icon: Icon(
               sender.isUnsubscribed
@@ -62,11 +66,18 @@ class SenderTile extends ConsumerWidget {
             ),
             tooltip: sender.unsubscribeLink == null
                 ? 'No unsubscribe link found'
-                : sender.isUnsubscribed
-                    ? 'Unsubscribed — click to open link again'
-                    : 'Unsubscribe',
+                : sender.unsubscribeLink!.startsWith('mailto:')
+                    ? 'Open an email to find web unsubscribe link'
+                    : sender.isUnsubscribed
+                        ? 'Unsubscribed — click to open link again'
+                        : 'Unsubscribe',
             onPressed: sender.unsubscribeLink != null
                 ? () async {
+                    if (sender.unsubscribeLink!.startsWith('mailto:')) {
+                      ref.read(selectedSenderProvider.notifier).state =
+                          sender.email;
+                      return;
+                    }
                     final uri = Uri.parse(sender.unsubscribeLink!);
                     if (await canLaunchUrl(uri)) {
                       await launchUrl(uri);
@@ -86,8 +97,36 @@ class SenderTile extends ConsumerWidget {
         ],
       ),
       onTap: () {
+        ref.read(selectedEmailIdProvider.notifier).state = null;
         ref.read(selectedSenderProvider.notifier).state = sender.email;
       },
+    );
+  }
+}
+
+class _CategoryBadge extends StatelessWidget {
+  final EmailCategory category;
+
+  const _CategoryBadge({required this.category});
+
+  @override
+  Widget build(BuildContext context) {
+    if (category == EmailCategory.unknown) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: category.color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        category.displayName,
+        style: TextStyle(
+          fontSize: 9,
+          fontWeight: FontWeight.w500,
+          color: category.color,
+        ),
+      ),
     );
   }
 }

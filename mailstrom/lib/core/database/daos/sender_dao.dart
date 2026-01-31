@@ -56,4 +56,43 @@ class SenderDao extends DatabaseAccessor<AppDatabase>
   Future<void> deleteAllSenders() {
     return delete(senderTable).go();
   }
+
+  Future<void> updateCategory(String email, String category) {
+    return (update(senderTable)..where((t) => t.email.equals(email))).write(
+      SenderTableCompanion(category: Value(category)),
+    );
+  }
+
+  Future<List<SenderTableData>> getTopSenders(int limit) {
+    return (select(senderTable)
+          ..orderBy([
+            (t) => OrderingTerm(
+                  expression: t.emailCount,
+                  mode: OrderingMode.desc,
+                ),
+          ])
+          ..limit(limit))
+        .get();
+  }
+
+  Future<Map<String, int>> getCategoryBreakdown() async {
+    final result = await customSelect(
+      'SELECT category, COUNT(*) AS count FROM sender_table GROUP BY category',
+    ).get();
+    return {
+      for (final row in result)
+        row.read<String>('category'): row.read<int>('count'),
+    };
+  }
+
+  Future<int> getTotalEmailCount() async {
+    final result = await customSelect(
+      'SELECT COALESCE(SUM(email_count), 0) AS total FROM sender_table',
+    ).getSingle();
+    return result.read<int>('total');
+  }
+
+  Future<List<SenderTableData>> getAllSenders() {
+    return select(senderTable).get();
+  }
 }

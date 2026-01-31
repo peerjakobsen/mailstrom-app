@@ -113,6 +113,9 @@ class SenderTreeView extends ConsumerWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final sendersWithLink =
         group.senders.where((s) => s.unsubscribeLink != null).toList();
+    final sendersWithHttpLink = sendersWithLink
+        .where((s) => !s.unsubscribeLink!.startsWith('mailto:'))
+        .toList();
     final hasAnyLink = sendersWithLink.isNotEmpty;
     final allUnsubscribed =
         hasAnyLink && sendersWithLink.every((s) => s.isUnsubscribed);
@@ -131,13 +134,24 @@ class SenderTreeView extends ConsumerWidget {
           ? 'No unsubscribe links found'
           : allUnsubscribed
               ? 'All unsubscribed'
-              : 'Unsubscribe all (${sendersWithLink.length})',
+              : sendersWithHttpLink.isEmpty
+                  ? 'Open emails to find web unsubscribe links'
+                  : 'Unsubscribe all (${sendersWithHttpLink.length})',
       onPressed: hasAnyLink
           ? () async {
-              final toUnsubscribe =
-                  sendersWithLink.where((s) => !s.isUnsubscribed).toList();
-              final targets =
-                  toUnsubscribe.isEmpty ? sendersWithLink : toUnsubscribe;
+              final targets = sendersWithHttpLink
+                  .where((s) => !s.isUnsubscribed)
+                  .toList();
+              if (targets.isEmpty && sendersWithHttpLink.isNotEmpty) {
+                // All HTTP senders already unsubscribed, re-open links
+                for (final sender in sendersWithHttpLink) {
+                  final uri = Uri.parse(sender.unsubscribeLink!);
+                  if (await canLaunchUrl(uri)) {
+                    await launchUrl(uri);
+                  }
+                }
+                return;
+              }
               for (final sender in targets) {
                 final uri = Uri.parse(sender.unsubscribeLink!);
                 if (await canLaunchUrl(uri)) {

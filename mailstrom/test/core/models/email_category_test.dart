@@ -10,11 +10,19 @@ void main() {
       expect(EmailCategory.notification.displayName, 'Notification');
       expect(EmailCategory.marketing.displayName, 'Marketing');
       expect(EmailCategory.transactional.displayName, 'Transactional');
+      expect(EmailCategory.automated.displayName, 'Automated');
       expect(EmailCategory.unknown.displayName, 'Unknown');
     });
 
-    test('has 7 values', () {
-      expect(EmailCategory.values.length, 7);
+    test('has 8 values', () {
+      expect(EmailCategory.values.length, 8);
+    });
+
+    test('fromString returns correct category', () {
+      expect(EmailCategory.fromString('personal'), EmailCategory.personal);
+      expect(EmailCategory.fromString('automated'), EmailCategory.automated);
+      expect(EmailCategory.fromString('unknown'), EmailCategory.unknown);
+      expect(EmailCategory.fromString('invalid'), EmailCategory.unknown);
     });
   });
 }

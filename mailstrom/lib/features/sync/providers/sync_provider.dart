@@ -9,6 +9,7 @@ import '../../../core/database/daos/sender_dao.dart';
 import '../../../core/database/daos/sync_state_dao.dart';
 import '../../../core/models/sync_progress.dart';
 import '../../../core/services/gmail_service.dart';
+import '../../../core/utils/category_engine.dart';
 import '../../../core/utils/email_parser.dart';
 
 final syncNotifierProvider =
@@ -33,6 +34,8 @@ class SyncNotifier extends AsyncNotifier<SyncProgress> {
     if (syncState?.lastSyncTime != null) {
       _hasCompletedInitialSync = true;
       _hasStartedFetching = true;
+      // Re-categorize senders once after upgrade to smart engine
+      _recategorizeSenders();
       // Start incremental sync in background
       _runIncrementalSync(syncState!.historyId);
       return const SyncProgress(phase: SyncPhase.complete);
@@ -53,6 +56,41 @@ class SyncNotifier extends AsyncNotifier<SyncProgress> {
     // No previous sync — run initial sync
     _runInitialSync();
     return const SyncProgress.listing();
+  }
+
+  /// One-time re-categorization of existing senders using the smart engine.
+  /// Runs only when senders with 'unknown' category exist and could be
+  /// better categorized by the new engine's domain/pattern/subject heuristics.
+  Future<void> _recategorizeSenders() async {
+    try {
+      final senderDao = ref.read(senderDaoProvider);
+      final emailDao = ref.read(emailDaoProvider);
+
+      final senders = await senderDao.getAllSenders();
+      // Only re-categorize senders that the old engine couldn't classify well
+      final candidates = senders.where(
+        (s) => s.category == 'unknown' || s.category == 'newsletter',
+      );
+
+      for (final sender in candidates) {
+        // Get one email to use subject for categorization
+        final emails = await emailDao.getEmailsBySender(sender.email);
+        final subject = emails.isNotEmpty ? emails.first.subject : '';
+
+        final newCategory = CategoryEngine.categorize(
+          senderEmail: sender.email,
+          domain: sender.domain,
+          subject: subject,
+          unsubscribeHeader: sender.unsubscribeLink,
+        );
+
+        if (newCategory != sender.category) {
+          await senderDao.updateCategory(sender.email, newCategory);
+        }
+      }
+    } catch (_) {
+      // Non-critical — don't block app startup
+    }
   }
 
   Future<void> _runInitialSync() async {

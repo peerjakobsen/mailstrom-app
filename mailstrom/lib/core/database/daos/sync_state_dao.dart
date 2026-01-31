@@ -22,6 +22,17 @@ class SyncStateDao extends DatabaseAccessor<AppDatabase>
     );
   }
 
+  Future<void> incrementDeletedCount(int count) async {
+    final current = await getSyncState();
+    final existing = current?.deletedEmailsCount ?? 0;
+    await updateSyncState(
+      SyncStateTableCompanion(
+        id: const Value(1),
+        deletedEmailsCount: Value(existing + count),
+      ),
+    );
+  }
+
   Future<void> clearSyncState() {
     return delete(syncStateTable).go();
   }

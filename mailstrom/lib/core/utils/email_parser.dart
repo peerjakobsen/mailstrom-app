@@ -1,5 +1,7 @@
 import 'package:googleapis/gmail/v1.dart';
 
+import 'category_engine.dart';
+
 class ParsedEmail {
   final String messageId;
   final String senderEmail;
@@ -49,7 +51,13 @@ class EmailParser {
     final unsubscribeHeader = _getHeader(headers, 'List-Unsubscribe');
     final unsubscribeLink = _parseUnsubscribeLink(unsubscribeHeader);
 
-    final category = _categorize(message.labelIds, unsubscribeHeader);
+    final category = CategoryEngine.categorize(
+      labelIds: message.labelIds,
+      senderEmail: email.toLowerCase(),
+      domain: domain.toLowerCase(),
+      subject: subject,
+      unsubscribeHeader: unsubscribeHeader,
+    );
 
     return ParsedEmail(
       messageId: message.id!,
@@ -103,27 +111,11 @@ class EmailParser {
     final httpMatch = RegExp(r'<(https?://[^>]+)>').firstMatch(header);
     if (httpMatch != null) return httpMatch.group(1);
 
+    // Store mailto so we know unsubscribe exists (UI will handle it)
     final mailtoMatch = RegExp(r'<(mailto:[^>]+)>').firstMatch(header);
     if (mailtoMatch != null) return mailtoMatch.group(1);
 
     return null;
   }
 
-  static String _categorize(
-    List<String>? labelIds,
-    String? unsubscribeHeader,
-  ) {
-    if (labelIds == null) return 'unknown';
-
-    if (labelIds.contains('CATEGORY_SOCIAL')) return 'social';
-    if (labelIds.contains('CATEGORY_PROMOTIONS')) return 'marketing';
-    if (labelIds.contains('CATEGORY_UPDATES')) return 'notification';
-    if (labelIds.contains('CATEGORY_FORUMS')) return 'social';
-
-    if (unsubscribeHeader != null) return 'newsletter';
-
-    if (labelIds.contains('CATEGORY_PERSONAL')) return 'personal';
-
-    return 'unknown';
-  }
 }

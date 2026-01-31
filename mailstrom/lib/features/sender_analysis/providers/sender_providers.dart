@@ -1,6 +1,8 @@
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/database/database.dart';
+import '../../../core/models/email_category.dart';
 import '../models/sender_group.dart';
 
 enum SenderSort { byCount, byName, byRecent }
@@ -8,6 +10,10 @@ enum SenderSort { byCount, byName, byRecent }
 enum SenderFilter { all, unsubscribed, notUnsubscribed }
 
 final senderFilterProvider = StateProvider<SenderFilter>((ref) => SenderFilter.all);
+
+final senderCategoryFilterProvider = StateProvider<EmailCategory?>((ref) => null);
+
+final unsubscribeReadyModeProvider = StateProvider<bool>((ref) => false);
 
 final senderListProvider = StreamProvider<List<SenderTableData>>((ref) {
   return ref.watch(senderDaoProvider).watchAllSenders();
@@ -18,6 +24,12 @@ final selectedSenderProvider = StateProvider<String?>((ref) => null);
 final senderSearchQueryProvider = StateProvider<String>((ref) => '');
 
 final senderSortProvider = StateProvider<SenderSort>((ref) => SenderSort.byCount);
+
+final searchFocusProvider = Provider<FocusNode>((ref) {
+  final node = FocusNode();
+  ref.onDispose(() => node.dispose());
+  return node;
+});
 
 final senderSelectionProvider =
     StateNotifierProvider<SenderSelectionNotifier, Set<String>>(
@@ -56,6 +68,8 @@ final filteredSenderListProvider =
   final query = ref.watch(senderSearchQueryProvider).toLowerCase();
   final sort = ref.watch(senderSortProvider);
   final filter = ref.watch(senderFilterProvider);
+  final categoryFilter = ref.watch(senderCategoryFilterProvider);
+  final unsubscribeReady = ref.watch(unsubscribeReadyModeProvider);
 
   return sendersAsync.whenData((senders) {
     var filtered = senders.where((s) {
@@ -75,6 +89,23 @@ final filteredSenderListProvider =
         filtered = filtered
             .where((s) => !s.isUnsubscribed && s.unsubscribeLink != null)
             .toList();
+    }
+
+    // Apply category filter
+    if (categoryFilter != null) {
+      filtered = filtered
+          .where((s) => s.category == categoryFilter.name)
+          .toList();
+    }
+
+    // Unsubscribe Ready: only newsletters with clickable unsubscribe links
+    if (unsubscribeReady) {
+      filtered = filtered
+          .where((s) =>
+              s.category == 'newsletter' &&
+              s.unsubscribeLink != null &&
+              !s.unsubscribeLink!.startsWith('mailto:'))
+          .toList();
     }
 
     switch (sort) {

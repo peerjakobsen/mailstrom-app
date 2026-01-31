@@ -14,7 +14,7 @@ class BulkActionBar extends ConsumerWidget {
     final selection = ref.watch(senderSelectionProvider);
     final sendersAsync = ref.watch(senderListProvider);
     final colorScheme = Theme.of(context).colorScheme;
-    // Watch sync progress so the button re-enables when sync completes
+    // Watch sync progress so buttons re-enable when sync completes
     ref.watch(syncNotifierProvider);
     final isSyncing = !ref.read(syncNotifierProvider.notifier).hasCompletedInitialSync;
 
@@ -52,22 +52,105 @@ class BulkActionBar extends ConsumerWidget {
             child: const Text('Clear'),
           ),
           const SizedBox(width: 4),
-          Tooltip(
-            message: isSyncing
-                ? 'Delete is available after sync completes'
-                : '',
-            child: FilledButton.tonalIcon(
-              icon: const Icon(Icons.delete_outline, size: 18),
-              label: const Text('Delete'),
-              onPressed: isSyncing
-                  ? null
-                  : () => _showDeleteDialog(
-                        context,
-                        ref,
-                        selection,
-                        totalEmails.valueOrNull ?? 0,
-                        selectedSenders.valueOrNull ?? [],
-                      ),
+          _ActionButton(
+            icon: Icons.mark_email_read_outlined,
+            label: 'Mark Read',
+            isSyncing: isSyncing,
+            tooltip: 'Mark all emails as read',
+            onPressed: () => _showConfirmDialog(
+              context,
+              ref,
+              title: 'Mark emails as read?',
+              action: 'mark as read',
+              senders: selectedSenders.valueOrNull ?? [],
+              totalEmails: totalEmails.valueOrNull ?? 0,
+              onConfirm: () => _executeBulkAction(
+                context,
+                ref,
+                senders: selectedSenders.valueOrNull ?? [],
+                actionLabel: 'Marking as read',
+                execute: (gmailService, emailIds, onProgress) async {
+                  await gmailService.markAsRead(
+                    emailIds,
+                    onProgress: onProgress,
+                  );
+                },
+                postProcess: (ref, sender, emailIds) async {
+                  final emailDao = ref.read(emailDaoProvider);
+                  await emailDao.markEmailsAsReadBySender(sender.email);
+                },
+                clearSelection: false,
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          _ActionButton(
+            icon: Icons.archive_outlined,
+            label: 'Archive',
+            isSyncing: isSyncing,
+            tooltip: 'Archive all emails (remove from inbox)',
+            onPressed: () => _showConfirmDialog(
+              context,
+              ref,
+              title: 'Archive emails?',
+              action: 'archive',
+              senders: selectedSenders.valueOrNull ?? [],
+              totalEmails: totalEmails.valueOrNull ?? 0,
+              description: 'Emails will be removed from your inbox but remain in All Mail.',
+              onConfirm: () => _executeBulkAction(
+                context,
+                ref,
+                senders: selectedSenders.valueOrNull ?? [],
+                actionLabel: 'Archiving',
+                execute: (gmailService, emailIds, onProgress) async {
+                  await gmailService.archiveMessages(
+                    emailIds,
+                    onProgress: onProgress,
+                  );
+                },
+                postProcess: (ref, sender, emailIds) async {
+                  final emailDao = ref.read(emailDaoProvider);
+                  final senderDao = ref.read(senderDaoProvider);
+                  await emailDao.deleteEmailsBySender(sender.email);
+                  await senderDao.deleteSender(sender.email);
+                },
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          _ActionButton(
+            icon: Icons.delete_outline,
+            label: 'Delete',
+            isSyncing: isSyncing,
+            tooltip: 'Move to Gmail Trash',
+            onPressed: () => _showConfirmDialog(
+              context,
+              ref,
+              title: 'Delete emails?',
+              action: 'delete',
+              senders: selectedSenders.valueOrNull ?? [],
+              totalEmails: totalEmails.valueOrNull ?? 0,
+              description: 'Emails can be recovered from Trash within 30 days.',
+              onConfirm: () => _executeBulkAction(
+                context,
+                ref,
+                senders: selectedSenders.valueOrNull ?? [],
+                actionLabel: 'Deleting',
+                execute: (gmailService, emailIds, onProgress) async {
+                  await gmailService.trashMessages(
+                    emailIds,
+                    onProgress: onProgress,
+                  );
+                },
+                postProcess: (ref, sender, emailIds) async {
+                  final emailDao = ref.read(emailDaoProvider);
+                  final senderDao = ref.read(senderDaoProvider);
+                  final syncStateDao = ref.read(syncStateDaoProvider);
+                  await emailDao.deleteEmailsBySender(sender.email);
+                  await senderDao.deleteSender(sender.email);
+                  await syncStateDao.incrementDeletedCount(emailIds.length);
+                },
+              ),
             ),
           ),
         ],
@@ -75,13 +158,16 @@ class BulkActionBar extends ConsumerWidget {
     );
   }
 
-  void _showDeleteDialog(
+  void _showConfirmDialog(
     BuildContext context,
-    WidgetRef ref,
-    Set<String> selection,
-    int totalEmails,
-    List<SenderTableData> senders,
-  ) {
+    WidgetRef ref, {
+    required String title,
+    required String action,
+    required List<SenderTableData> senders,
+    required int totalEmails,
+    String? description,
+    required VoidCallback onConfirm,
+  }) {
     final senderNames = senders
         .map((s) => s.displayName ?? s.email)
         .toList()
@@ -90,13 +176,13 @@ class BulkActionBar extends ConsumerWidget {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete emails?'),
+        title: Text(title),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'This will move $totalEmails emails to Gmail Trash from:',
+              'This will $action $totalEmails emails from:',
             ),
             const SizedBox(height: 8),
             ...senderNames.take(10).map(
@@ -118,13 +204,15 @@ class BulkActionBar extends ConsumerWidget {
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ),
-            const SizedBox(height: 12),
-            Text(
-              'Emails can be recovered from Trash within 30 days.',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-            ),
+            if (description != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                description,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
+            ],
           ],
         ),
         actions: [
@@ -135,27 +223,38 @@ class BulkActionBar extends ConsumerWidget {
           FilledButton(
             onPressed: () {
               Navigator.of(context).pop();
-              _executeBulkDelete(context, ref, senders);
+              onConfirm();
             },
-            child: const Text('Delete'),
+            child: Text(action[0].toUpperCase() + action.substring(1)),
           ),
         ],
       ),
     );
   }
 
-  Future<void> _executeBulkDelete(
+  Future<void> _executeBulkAction(
     BuildContext context,
-    WidgetRef ref,
-    List<SenderTableData> senders,
-  ) async {
+    WidgetRef ref, {
+    required List<SenderTableData> senders,
+    required String actionLabel,
+    required Future<void> Function(
+      GmailService gmailService,
+      List<String> emailIds,
+      void Function(int, int) onProgress,
+    ) execute,
+    required Future<void> Function(
+      WidgetRef ref,
+      SenderTableData sender,
+      List<String> emailIds,
+    ) postProcess,
+    bool clearSelection = true,
+  }) async {
     final gmailService = ref.read(gmailServiceProvider);
     final emailDao = ref.read(emailDaoProvider);
-    final senderDao = ref.read(senderDaoProvider);
 
     var currentSender = '';
-    var trashedCount = 0;
-    var totalToTrash = 0;
+    var processedCount = 0;
+    var totalToProcess = 0;
 
     // Show progress dialog
     showDialog(
@@ -163,7 +262,6 @@ class BulkActionBar extends ConsumerWidget {
       barrierDismissible: false,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) {
-          // Store setter so we can call it from outside
           _dialogSetState = setDialogState;
           _dialogContext = dialogContext;
           return AlertDialog(
@@ -173,7 +271,7 @@ class BulkActionBar extends ConsumerWidget {
               children: [
                 Text(
                   currentSender.isNotEmpty
-                      ? 'Deleting emails from $currentSender...'
+                      ? '$actionLabel emails from $currentSender...'
                       : 'Preparing...',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         fontWeight: FontWeight.w500,
@@ -181,12 +279,14 @@ class BulkActionBar extends ConsumerWidget {
                 ),
                 const SizedBox(height: 12),
                 LinearProgressIndicator(
-                  value: totalToTrash > 0 ? trashedCount / totalToTrash : null,
+                  value: totalToProcess > 0
+                      ? processedCount / totalToProcess
+                      : null,
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  totalToTrash > 0
-                      ? '$trashedCount / $totalToTrash emails'
+                  totalToProcess > 0
+                      ? '$processedCount / $totalToProcess emails'
                       : '',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
@@ -205,20 +305,20 @@ class BulkActionBar extends ConsumerWidget {
         final emailIds = await emailDao.getEmailIdsBySender(sender.email);
 
         currentSender = sender.displayName ?? sender.email;
-        trashedCount = 0;
-        totalToTrash = emailIds.length;
+        processedCount = 0;
+        totalToProcess = emailIds.length;
         _dialogSetState?.call(() {});
 
-        await gmailService.trashMessages(
+        await execute(
+          gmailService,
           emailIds,
-          onProgress: (completed, total) {
-            trashedCount = completed;
+          (completed, total) {
+            processedCount = completed;
             _dialogSetState?.call(() {});
           },
         );
 
-        await emailDao.deleteEmailsBySender(sender.email);
-        await senderDao.deleteSender(sender.email);
+        await postProcess(ref, sender, emailIds);
       } catch (e) {
         // Continue with other senders on failure
       }
@@ -232,11 +332,43 @@ class BulkActionBar extends ConsumerWidget {
     _dialogSetState = null;
     _dialogContext = null;
 
-    ref.read(senderSelectionProvider.notifier).clear();
-    ref.read(selectedSenderProvider.notifier).state = null;
+    if (clearSelection) {
+      ref.read(senderSelectionProvider.notifier).clear();
+      ref.read(selectedSenderProvider.notifier).state = null;
+    }
   }
 
   // Mutable refs for updating the progress dialog from async code
   static void Function(void Function())? _dialogSetState;
   static BuildContext? _dialogContext;
+}
+
+class _ActionButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool isSyncing;
+  final String tooltip;
+  final VoidCallback onPressed;
+
+  const _ActionButton({
+    required this.icon,
+    required this.label,
+    required this.isSyncing,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: isSyncing
+          ? '$label is available after sync completes'
+          : tooltip,
+      child: FilledButton.tonalIcon(
+        icon: Icon(icon, size: 18),
+        label: Text(label),
+        onPressed: isSyncing ? null : onPressed,
+      ),
+    );
+  }
 }

@@ -19,7 +19,7 @@ Core functionality to connect, analyze, and clean up a Gmail inbox.
 Enhanced analysis, additional bulk actions, and production hardening.
 
 - **macOS Code Signing & Keychain Storage**: Apple Developer certificate, proper provisioning profile, migrate token storage from file-based to macOS Keychain via flutter_secure_storage for production-grade credential security
-- **Smart Categorization**: Auto-detect email types (newsletter, transactional, automated, personal) using unsubscribe headers and content patterns
+- **Smart Categorization (Rule-Based)**: Auto-detect email types (newsletter, transactional, automated, personal) using rule-based heuristics — no ML required. Detection methods: List-Unsubscribe header presence, known sender domain lists (substack.com, mailchimp, github.com, etc.), sender address patterns (noreply@, notifications@), and subject keyword matching (receipt, shipped, order confirmation, etc.)
 - **Category Filtering**: Filter the tree view by category; "Newsletter Nuke Mode" to show only unsubscribable senders
 - **Statistics Dashboard**: Total emails analyzed, top senders by volume, category breakdown chart, space reclaimed tracker
 - **Additional Bulk Actions**: Archive all, mark as read for selected senders
@@ -30,9 +30,9 @@ Enhanced analysis, additional bulk actions, and production hardening.
 Expansion and advanced features.
 
 - Multiple Gmail account support
-- Auto-unsubscribe via headless browser
 - Scheduled cleanup rules (auto-delete from sender after N days)
 - Export sender list to CSV
 - "Inbox Zero" game mode with progress tracking
 - Windows and Linux desktop support
 - iOS/Android companion app
+- **ML-Enhanced Categorization (Optional)**: If rule-based heuristics prove insufficient, add on-device ML classification using tflite_flutter with a custom-trained text classifier. Would require labeled training data and model bundling (~5-10MB). Only pursue if user feedback indicates rules aren't accurate enough.

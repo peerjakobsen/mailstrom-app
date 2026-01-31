@@ -1,14 +1,11 @@
 class UnsubscribeParser {
-  /// Extract unsubscribe link from List-Unsubscribe header.
-  /// Prefers https URLs over mailto links.
+  /// Extract HTTP(S) unsubscribe link from List-Unsubscribe header.
+  /// Only returns browser-openable URLs; mailto links are ignored.
   static String? fromHeader(String? header) {
     if (header == null || header.isEmpty) return null;
 
     final httpMatch = RegExp(r'<(https?://[^>]+)>').firstMatch(header);
     if (httpMatch != null) return httpMatch.group(1);
-
-    final mailtoMatch = RegExp(r'<(mailto:[^>]+)>').firstMatch(header);
-    if (mailtoMatch != null) return mailtoMatch.group(1);
 
     return null;
   }
@@ -32,12 +29,8 @@ class UnsubscribeParser {
     return null;
   }
 
-  /// Try HTTP link from header, then body, then mailto as last resort.
+  /// Try HTTP link from header, then fall back to body scan.
   static String? extract({String? header, String? bodyText}) {
-    final headerLink = fromHeader(header);
-    if (headerLink != null && !headerLink.startsWith('mailto:')) {
-      return headerLink;
-    }
-    return fromBody(bodyText) ?? headerLink;
+    return fromHeader(header) ?? fromBody(bodyText);
   }
 }

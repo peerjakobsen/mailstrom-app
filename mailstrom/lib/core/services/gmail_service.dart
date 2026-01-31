@@ -110,12 +110,50 @@ class GmailService {
   Future<void> trashMessages(
     List<String> ids, {
     void Function(int completed, int total)? onProgress,
+    bool Function()? shouldCancel,
+  }) async {
+    final api = await _getApi();
+    for (var i = 0; i < ids.length; i++) {
+      if (shouldCancel?.call() == true) break;
+      await _rateLimiter.acquire(5);
+      await retryWithBackoff(() async {
+        await api.users.messages.trash('me', ids[i]);
+      });
+      onProgress?.call(i + 1, ids.length);
+    }
+  }
+
+  Future<void> archiveMessages(
+    List<String> ids, {
+    void Function(int completed, int total)? onProgress,
   }) async {
     final api = await _getApi();
     for (var i = 0; i < ids.length; i++) {
       await _rateLimiter.acquire(5);
       await retryWithBackoff(() async {
-        await api.users.messages.trash('me', ids[i]);
+        await api.users.messages.modify(
+          ModifyMessageRequest(removeLabelIds: ['INBOX']),
+          'me',
+          ids[i],
+        );
+      });
+      onProgress?.call(i + 1, ids.length);
+    }
+  }
+
+  Future<void> markAsRead(
+    List<String> ids, {
+    void Function(int completed, int total)? onProgress,
+  }) async {
+    final api = await _getApi();
+    for (var i = 0; i < ids.length; i++) {
+      await _rateLimiter.acquire(5);
+      await retryWithBackoff(() async {
+        await api.users.messages.modify(
+          ModifyMessageRequest(removeLabelIds: ['UNREAD']),
+          'me',
+          ids[i],
+        );
       });
       onProgress?.call(i + 1, ids.length);
     }

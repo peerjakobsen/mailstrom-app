@@ -17,11 +17,11 @@ void main() {
       expect(result, 'https://example.com/unsub');
     });
 
-    test('falls back to mailto', () {
+    test('ignores mailto-only header', () {
       final result = UnsubscribeParser.fromHeader(
         '<mailto:unsubscribe@list.example.com>',
       );
-      expect(result, 'mailto:unsubscribe@list.example.com');
+      expect(result, isNull);
     });
 
     test('returns null for empty header', () {
