@@ -52,6 +52,7 @@ class SenderTreeView extends ConsumerWidget {
                 .every((s) => selection.contains(s.email));
 
             return ExpansionTile(
+              key: ValueKey(group.domain),
               leading: Checkbox(
                 value: allSelected && group.senders.isNotEmpty
                     ? true

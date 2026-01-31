@@ -53,72 +53,6 @@ class BulkActionBar extends ConsumerWidget {
           ),
           const SizedBox(width: 4),
           _ActionButton(
-            icon: Icons.mark_email_read_outlined,
-            label: 'Mark Read',
-            isSyncing: isSyncing,
-            tooltip: 'Mark all emails as read',
-            onPressed: () => _showConfirmDialog(
-              context,
-              ref,
-              title: 'Mark emails as read?',
-              action: 'mark as read',
-              senders: selectedSenders.valueOrNull ?? [],
-              totalEmails: totalEmails.valueOrNull ?? 0,
-              onConfirm: () => _executeBulkAction(
-                context,
-                ref,
-                senders: selectedSenders.valueOrNull ?? [],
-                actionLabel: 'Marking as read',
-                execute: (gmailService, emailIds, onProgress) async {
-                  await gmailService.markAsRead(
-                    emailIds,
-                    onProgress: onProgress,
-                  );
-                },
-                postProcess: (ref, sender, emailIds) async {
-                  final emailDao = ref.read(emailDaoProvider);
-                  await emailDao.markEmailsAsReadBySender(sender.email);
-                },
-                clearSelection: false,
-              ),
-            ),
-          ),
-          const SizedBox(width: 4),
-          _ActionButton(
-            icon: Icons.archive_outlined,
-            label: 'Archive',
-            isSyncing: isSyncing,
-            tooltip: 'Archive all emails (remove from inbox)',
-            onPressed: () => _showConfirmDialog(
-              context,
-              ref,
-              title: 'Archive emails?',
-              action: 'archive',
-              senders: selectedSenders.valueOrNull ?? [],
-              totalEmails: totalEmails.valueOrNull ?? 0,
-              description: 'Emails will be removed from your inbox but remain in All Mail.',
-              onConfirm: () => _executeBulkAction(
-                context,
-                ref,
-                senders: selectedSenders.valueOrNull ?? [],
-                actionLabel: 'Archiving',
-                execute: (gmailService, emailIds, onProgress) async {
-                  await gmailService.archiveMessages(
-                    emailIds,
-                    onProgress: onProgress,
-                  );
-                },
-                postProcess: (ref, sender, emailIds) async {
-                  final emailDao = ref.read(emailDaoProvider);
-                  final senderDao = ref.read(senderDaoProvider);
-                  await emailDao.deleteEmailsBySender(sender.email);
-                  await senderDao.deleteSender(sender.email);
-                },
-              ),
-            ),
-          ),
-          const SizedBox(width: 4),
-          _ActionButton(
             icon: Icons.delete_outline,
             label: 'Delete',
             isSyncing: isSyncing,
@@ -136,10 +70,11 @@ class BulkActionBar extends ConsumerWidget {
                 ref,
                 senders: selectedSenders.valueOrNull ?? [],
                 actionLabel: 'Deleting',
-                execute: (gmailService, emailIds, onProgress) async {
+                execute: (gmailService, emailIds, onProgress, shouldCancel) async {
                   await gmailService.trashMessages(
                     emailIds,
                     onProgress: onProgress,
+                    shouldCancel: shouldCancel,
                   );
                 },
                 postProcess: (ref, sender, emailIds) async {
@@ -169,7 +104,7 @@ class BulkActionBar extends ConsumerWidget {
     required VoidCallback onConfirm,
   }) {
     final senderNames = senders
-        .map((s) => s.displayName ?? s.email)
+        .map((s) => s.email)
         .toList()
       ..sort();
 
@@ -241,6 +176,7 @@ class BulkActionBar extends ConsumerWidget {
       GmailService gmailService,
       List<String> emailIds,
       void Function(int, int) onProgress,
+      bool Function() shouldCancel,
     ) execute,
     required Future<void> Function(
       WidgetRef ref,
@@ -255,6 +191,7 @@ class BulkActionBar extends ConsumerWidget {
     var currentSender = '';
     var processedCount = 0;
     var totalToProcess = 0;
+    var cancelled = false;
 
     // Show progress dialog
     showDialog(
@@ -292,6 +229,17 @@ class BulkActionBar extends ConsumerWidget {
                 ),
               ],
             ),
+            actions: [
+              TextButton(
+                onPressed: cancelled
+                    ? null
+                    : () {
+                        cancelled = true;
+                        setDialogState(() {});
+                      },
+                child: Text(cancelled ? 'Stopping...' : 'Stop'),
+              ),
+            ],
           );
         },
       ),
@@ -301,6 +249,7 @@ class BulkActionBar extends ConsumerWidget {
     await Future<void>.delayed(const Duration(milliseconds: 50));
 
     for (final sender in senders) {
+      if (cancelled) break;
       try {
         final emailIds = await emailDao.getEmailIdsBySender(sender.email);
 
@@ -316,6 +265,7 @@ class BulkActionBar extends ConsumerWidget {
             processedCount = completed;
             _dialogSetState?.call(() {});
           },
+          () => cancelled,
         );
 
         await postProcess(ref, sender, emailIds);

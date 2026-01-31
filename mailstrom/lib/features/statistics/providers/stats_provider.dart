@@ -8,14 +8,14 @@ class InboxStats {
   final int totalSenders;
   final int deletedEmails;
   final Map<String, int> categoryBreakdown;
-  final List<SenderTableData> topSenders;
+  final Map<String, int> topDomains;
 
   const InboxStats({
     required this.totalEmails,
     required this.totalSenders,
     required this.deletedEmails,
     required this.categoryBreakdown,
-    required this.topSenders,
+    required this.topDomains,
   });
 
   /// Category breakdown sorted by count descending, with display names.
@@ -37,7 +37,7 @@ final inboxStatsProvider = FutureProvider<InboxStats>((ref) async {
   final totalEmails = await senderDao.getTotalEmailCount();
   final allSenders = await senderDao.getAllSenders();
   final categoryBreakdown = await senderDao.getCategoryBreakdown();
-  final topSenders = await senderDao.getTopSenders(10);
+  final topDomains = await senderDao.getTopDomains(10);
 
   final syncState = await syncStateDao.getSyncState();
   final deletedEmails = syncState?.deletedEmailsCount ?? 0;
@@ -47,6 +47,6 @@ final inboxStatsProvider = FutureProvider<InboxStats>((ref) async {
     totalSenders: allSenders.length,
     deletedEmails: deletedEmails,
     categoryBreakdown: categoryBreakdown,
-    topSenders: topSenders,
+    topDomains: topDomains,
   );
 });

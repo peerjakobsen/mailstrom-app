@@ -116,7 +116,7 @@ class StatsScreen extends ConsumerWidget {
 
                   const SizedBox(height: 24),
 
-                  // Top senders
+                  // Top domains
                   Text(
                     'Top 10 Senders',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
@@ -124,9 +124,10 @@ class StatsScreen extends ConsumerWidget {
                         ),
                   ),
                   const SizedBox(height: 8),
-                  ...stats.topSenders.asMap().entries.map((entry) {
+                  ...stats.topDomains.entries.toList().asMap().entries.map((entry) {
                     final index = entry.key;
-                    final sender = entry.value;
+                    final domainName = entry.value.key;
+                    final emailCount = entry.value.value;
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 4),
                       child: Row(
@@ -145,14 +146,14 @@ class StatsScreen extends ConsumerWidget {
                           ),
                           Expanded(
                             child: Text(
-                              sender.displayName ?? sender.email,
+                              domainName,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: Theme.of(context).textTheme.bodyMedium,
                             ),
                           ),
                           Text(
-                            numberFormat.format(sender.emailCount),
+                            numberFormat.format(emailCount),
                             style:
                                 Theme.of(context).textTheme.bodySmall?.copyWith(
                                       fontWeight: FontWeight.w500,

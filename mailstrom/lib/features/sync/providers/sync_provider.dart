@@ -292,6 +292,9 @@ class SyncNotifier extends AsyncNotifier<SyncProgress> {
       );
     }
 
+    // Reconcile sender email counts with actual email rows
+    await senderDao.reconcileEmailCounts();
+
     // Save sync state — marks initial sync as complete
     await syncStateDao.updateSyncState(
       SyncStateTableCompanion.insert(
@@ -426,6 +429,11 @@ class SyncNotifier extends AsyncNotifier<SyncProgress> {
       // Process deleted messages
       if (deletedIds.isNotEmpty) {
         await emailDao.deleteEmailsByIds(deletedIds);
+      }
+
+      // Reconcile sender email counts with actual email rows
+      if (addedIds.isNotEmpty || deletedIds.isNotEmpty) {
+        await senderDao.reconcileEmailCounts();
       }
 
       // Update sync state
