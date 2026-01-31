@@ -1,0 +1,37 @@
+# Agent OS Standards Index
+
+global:
+  tech-stack:
+    description: Flutter/Dart tech stack with Riverpod, SQLite, Gmail API, and Material 3
+  coding-style:
+    description: Dart coding style — Effective Dart, const/final, null safety, trailing commas
+  conventions:
+    description: Flutter project structure, file naming, environment config, platform channels
+  error-handling:
+    description: Dart/Flutter error handling — typed exceptions, AsyncValue errors, Gmail API retry
+  validation:
+    description: Input validation — API response parsing, null-safe models, form validators
+  commenting:
+    description: Dart code commenting — doc comments, minimal comments, TODO format
+
+widgets:
+  components:
+    description: Flutter widget best practices — composition, const constructors, single responsibility
+  accessibility:
+    description: Flutter accessibility — Semantics, keyboard nav, VoiceOver, focus management
+  theming:
+    description: Material 3 theming — ColorScheme, dark mode, ThemeExtension, typography
+
+data:
+  models:
+    description: Dart data models — immutable classes, fromJson/toJson, equatable, copyWith
+  state:
+    description: Riverpod state management — provider types, AsyncValue, scoping, naming
+  api:
+    description: Gmail API integration — service layer, pagination, batch requests, rate limiting
+  local-storage:
+    description: SQLite local storage — drift, schema design, migrations, cache invalidation
+
+testing:
+  test-writing:
+    description: Flutter/Dart testing — widget tests, provider tests, mocking, minimal test strategy
