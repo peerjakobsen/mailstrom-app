@@ -1,5 +1,9 @@
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:googleapis/gmail/v1.dart';
+import 'package:googleapis_auth/googleapis_auth.dart';
 
 import '../exceptions/gmail_api_exception.dart';
 import '../utils/rate_limiter.dart';
@@ -72,27 +76,119 @@ class GmailService {
     });
   }
 
-  Future<List<Message>> getMessageMetadata(List<String> ids) async {
-    final api = await _getApi();
-    final results = <Message>[];
+  Future<AuthClient> _getAuthClient() async {
+    final client = await _ref.read(authenticatedClientProvider.future);
+    if (client == null) {
+      throw const GmailApiException(
+        'Not authenticated',
+        statusCode: 401,
+      );
+    }
+    return client;
+  }
 
+  static const _batchUrl = 'https://www.googleapis.com/batch/gmail/v1';
+  static const _metadataHeaders = ['From', 'Subject', 'Date', 'List-Unsubscribe'];
+
+  Future<List<Message>> getMessageMetadata(List<String> ids) async {
+    if (ids.isEmpty) return [];
+
+    final client = await _getAuthClient();
+    await _rateLimiter.acquire(ids.length * 5);
+
+    return retryWithBackoff(() async {
+      final boundary = 'batch_${DateTime.now().microsecondsSinceEpoch}';
+      final body = _buildBatchBody(ids, boundary);
+
+      final response = await client.post(
+        Uri.parse(_batchUrl),
+        headers: {'Content-Type': 'multipart/mixed; boundary=$boundary'},
+        body: body,
+      );
+
+      if (response.statusCode == 429 || response.statusCode >= 500) {
+        throw GmailApiException(
+          'Batch request failed: ${response.statusCode}',
+          statusCode: response.statusCode,
+        );
+      }
+
+      if (response.statusCode != 200) {
+        throw GmailApiException(
+          'Batch request failed: ${response.statusCode} ${response.body}',
+          statusCode: response.statusCode,
+        );
+      }
+
+      final contentType = response.headers['content-type'] ?? '';
+      final responseBoundary = RegExp(r'boundary=(.+)')
+          .firstMatch(contentType)
+          ?.group(1);
+
+      if (responseBoundary == null) {
+        throw const GmailApiException(
+          'Missing boundary in batch response',
+          statusCode: 500,
+        );
+      }
+
+      return _parseBatchResponse(response.body, responseBoundary);
+    });
+  }
+
+  String _buildBatchBody(List<String> ids, String boundary) {
+    final headerParams = _metadataHeaders
+        .map((h) => 'metadataHeaders=${Uri.encodeComponent(h)}')
+        .join('&');
+
+    final buffer = StringBuffer();
     for (final id in ids) {
-      await _rateLimiter.acquire(5);
-      try {
-        final message = await retryWithBackoff(() async {
-          return api.users.messages.get(
-            'me',
-            id,
-            format: 'metadata',
-            metadataHeaders: ['From', 'Subject', 'Date', 'List-Unsubscribe'],
-          );
-        });
-        results.add(message);
-      } on GmailApiException catch (e) {
-        if (e.isNotFound) continue;
-        rethrow;
-      } catch (_) {
+      buffer.writeln('--$boundary');
+      buffer.writeln('Content-Type: application/http');
+      buffer.writeln('Content-ID: <$id>');
+      buffer.writeln();
+      buffer.writeln(
+        'GET /gmail/v1/users/me/messages/$id?format=metadata&$headerParams',
+      );
+      buffer.writeln();
+    }
+    buffer.writeln('--$boundary--');
+    return buffer.toString();
+  }
+
+  List<Message> _parseBatchResponse(String body, String boundary) {
+    final parts = body.split('--$boundary');
+    final results = <Message>[];
+    final statusRegex = RegExp(r'HTTP/1\.1 (\d+)');
+
+    for (final part in parts) {
+      if (part.trim() == '--' || part.trim().isEmpty) continue;
+
+      final statusMatch = statusRegex.firstMatch(part);
+      if (statusMatch == null) continue;
+
+      final status = int.parse(statusMatch.group(1)!);
+
+      if (status == 404) continue;
+
+      final jsonStart = part.indexOf('{');
+      final jsonEnd = part.lastIndexOf('}');
+      if (jsonStart == -1 || jsonEnd == -1 || jsonEnd <= jsonStart) {
+        debugPrint('Batch sub-request: no JSON body (status $status)');
         continue;
+      }
+
+      if (status != 200) {
+        debugPrint('Batch sub-request failed with status $status');
+        continue;
+      }
+
+      try {
+        final json = jsonDecode(part.substring(jsonStart, jsonEnd + 1))
+            as Map<String, dynamic>;
+        results.add(Message.fromJson(json));
+      } catch (e) {
+        debugPrint('Failed to parse batch sub-response: $e');
       }
     }
 
