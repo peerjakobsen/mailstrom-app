@@ -62,12 +62,26 @@ jobs:
 
       - name: Build macOS release
         if: steps.check.outputs.exists == 'false'
-        run: flutter build macos --release
+        run: |
+          flutter build macos --release \
+            --config-only
+          xcodebuild -workspace macos/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -derivedDataPath build/macos \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
 
       - name: Create DMG
         if: steps.check.outputs.exists == 'false'
         run: |
           APP_PATH="build/macos/Build/Products/Release/mailstrom.app"
+          if [ ! -d "$APP_PATH" ]; then
+            echo "App not found at expected path, searching..."
+            APP_PATH=$(find build/macos -name "mailstrom.app" -type d | head -1)
+            echo "Found app at: $APP_PATH"
+          fi
           DMG_NAME="Mailstrom-${{ steps.version.outputs.tag }}-macOS.dmg"
 
           brew install create-dmg
