@@ -33,21 +33,19 @@ class HistoryResult {
   });
 }
 
+class _BatchResult {
+  final List<Message> messages;
+  final List<String> throttledIds;
+
+  const _BatchResult({required this.messages, required this.throttledIds});
+}
+
 class GmailService {
   final Ref _ref;
   late final RateLimiter _rateLimiter;
 
   GmailService(this._ref) {
-    _rateLimiter = RateLimiter(
-      unitsPerSecond: 250,
-      onWait: (requested, available, waitMs) {
-        _log(
-          LogLevel.warning,
-          'Rate limit: need $requested units, have $available — '
-          'waiting ${waitMs}ms',
-        );
-      },
-    );
+    _rateLimiter = RateLimiter(unitsPerSecond: 250);
   }
 
   void _log(LogLevel level, String message) {
@@ -120,53 +118,83 @@ class GmailService {
   static const _batchUrl = 'https://www.googleapis.com/batch/gmail/v1';
   static const _metadataHeaders = ['From', 'Subject', 'Date', 'List-Unsubscribe'];
 
+  static const _maxSubRequestRetries = 4;
+
   Future<List<Message>> getMessageMetadata(List<String> ids) async {
     if (ids.isEmpty) return [];
 
     final client = await _getAuthClient();
-    await _rateLimiter.acquire(ids.length * 5);
+    final allMessages = <Message>[];
+    var pendingIds = ids;
 
-    return retryWithBackoff(
-      () async {
-        final boundary = 'batch_${DateTime.now().microsecondsSinceEpoch}';
-        final body = _buildBatchBody(ids, boundary);
+    for (var attempt = 0; attempt <= _maxSubRequestRetries; attempt++) {
+      await _rateLimiter.acquire(pendingIds.length * 5);
 
-        final response = await client.post(
-          Uri.parse(_batchUrl),
-          headers: {'Content-Type': 'multipart/mixed; boundary=$boundary'},
-          body: body,
+      final result = await retryWithBackoff(
+        () async {
+          final boundary = 'batch_${DateTime.now().microsecondsSinceEpoch}';
+          final body = _buildBatchBody(pendingIds, boundary);
+
+          final response = await client.post(
+            Uri.parse(_batchUrl),
+            headers: {'Content-Type': 'multipart/mixed; boundary=$boundary'},
+            body: body,
+          );
+
+          if (response.statusCode == 429 || response.statusCode >= 500) {
+            throw GmailApiException(
+              'Batch request failed: ${response.statusCode}',
+              statusCode: response.statusCode,
+            );
+          }
+
+          if (response.statusCode != 200) {
+            throw GmailApiException(
+              'Batch request failed: ${response.statusCode} ${response.body}',
+              statusCode: response.statusCode,
+            );
+          }
+
+          final contentType = response.headers['content-type'] ?? '';
+          final responseBoundary = RegExp(r'boundary=(.+)')
+              .firstMatch(contentType)
+              ?.group(1);
+
+          if (responseBoundary == null) {
+            throw const GmailApiException(
+              'Missing boundary in batch response',
+              statusCode: 500,
+            );
+          }
+
+          return _parseBatchResponse(response.body, responseBoundary);
+        },
+        onRetry: _onRetry,
+      );
+
+      allMessages.addAll(result.messages);
+
+      if (result.throttledIds.isEmpty) break;
+
+      if (attempt < _maxSubRequestRetries) {
+        final waitMs = 1000 * (1 << attempt); // 1s, 2s, 4s, 8s
+        _log(
+          LogLevel.warning,
+          '${result.throttledIds.length} sub-requests throttled, '
+          'retrying in ${waitMs}ms (attempt ${attempt + 1}/$_maxSubRequestRetries)',
         );
+        await Future<void>.delayed(Duration(milliseconds: waitMs));
+        pendingIds = result.throttledIds;
+      } else {
+        _log(
+          LogLevel.error,
+          '${result.throttledIds.length} sub-requests still throttled '
+          'after $_maxSubRequestRetries retries — skipping',
+        );
+      }
+    }
 
-        if (response.statusCode == 429 || response.statusCode >= 500) {
-          throw GmailApiException(
-            'Batch request failed: ${response.statusCode}',
-            statusCode: response.statusCode,
-          );
-        }
-
-        if (response.statusCode != 200) {
-          throw GmailApiException(
-            'Batch request failed: ${response.statusCode} ${response.body}',
-            statusCode: response.statusCode,
-          );
-        }
-
-        final contentType = response.headers['content-type'] ?? '';
-        final responseBoundary = RegExp(r'boundary=(.+)')
-            .firstMatch(contentType)
-            ?.group(1);
-
-        if (responseBoundary == null) {
-          throw const GmailApiException(
-            'Missing boundary in batch response',
-            statusCode: 500,
-          );
-        }
-
-        return _parseBatchResponse(response.body, responseBoundary);
-      },
-      onRetry: _onRetry,
-    );
+    return allMessages;
   }
 
   String _buildBatchBody(List<String> ids, String boundary) {
@@ -189,10 +217,12 @@ class GmailService {
     return buffer.toString();
   }
 
-  List<Message> _parseBatchResponse(String body, String boundary) {
+  _BatchResult _parseBatchResponse(String body, String boundary) {
     final parts = body.split('--$boundary');
-    final results = <Message>[];
+    final messages = <Message>[];
+    final throttledIds = <String>[];
     final statusRegex = RegExp(r'HTTP/1\.1 (\d+)');
+    final contentIdRegex = RegExp(r'Content-ID:\s*<response-(.+?)>');
 
     for (final part in parts) {
       if (part.trim() == '--' || part.trim().isEmpty) continue;
@@ -203,6 +233,14 @@ class GmailService {
       final status = int.parse(statusMatch.group(1)!);
 
       if (status == 404) continue;
+
+      if (status == 429) {
+        final idMatch = contentIdRegex.firstMatch(part);
+        if (idMatch != null) {
+          throttledIds.add(idMatch.group(1)!);
+        }
+        continue;
+      }
 
       final jsonStart = part.indexOf('{');
       final jsonEnd = part.lastIndexOf('}');
@@ -219,13 +257,13 @@ class GmailService {
       try {
         final json = jsonDecode(part.substring(jsonStart, jsonEnd + 1))
             as Map<String, dynamic>;
-        results.add(Message.fromJson(json));
+        messages.add(Message.fromJson(json));
       } catch (e) {
         _log(LogLevel.error, 'Failed to parse batch sub-response: $e');
       }
     }
 
-    return results;
+    return _BatchResult(messages: messages, throttledIds: throttledIds);
   }
 
   Future<Message> getFullMessage(String id) async {

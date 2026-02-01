@@ -234,10 +234,10 @@ class SyncNotifier extends AsyncNotifier<SyncProgress> {
     final senderMap = <String, _SenderAccumulator>{};
     var processed = alreadyProcessed;
 
-    for (var i = 0; i < allMessageIds.length; i += 100) {
+    for (var i = 0; i < allMessageIds.length; i += 15) {
       final batchIds = allMessageIds.sublist(
         i,
-        (i + 100).clamp(0, allMessageIds.length),
+        (i + 15).clamp(0, allMessageIds.length),
       );
       final messages = await gmailService.getMessageMetadata(batchIds);
 
@@ -405,10 +405,10 @@ class SyncNotifier extends AsyncNotifier<SyncProgress> {
 
       // Process added messages
       if (addedIds.isNotEmpty) {
-        for (var i = 0; i < addedIds.length; i += 100) {
+        for (var i = 0; i < addedIds.length; i += 15) {
           final batchIds = addedIds.sublist(
             i,
-            (i + 100).clamp(0, addedIds.length),
+            (i + 15).clamp(0, addedIds.length),
           );
           final messages = await gmailService.getMessageMetadata(batchIds);
 

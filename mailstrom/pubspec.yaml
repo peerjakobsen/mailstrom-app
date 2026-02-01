@@ -1,7 +1,7 @@
 name: mailstrom
 description: 'Gmail inbox cleanup tool — analyze by sender, bulk delete, unsubscribe.'
 publish_to: 'none'
-version: 1.2.0+1
+version: 1.2.1+1
 
 environment:
   sdk: ^3.10.7
