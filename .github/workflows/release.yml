@@ -63,18 +63,12 @@ jobs:
       - name: Build macOS release
         if: steps.check.outputs.exists == 'false'
         run: |
-          flutter build macos --release \
-            --config-only
-          xcodebuild -workspace macos/Runner.xcworkspace \
-            -scheme Runner \
-            -configuration Release \
-            -derivedDataPath build/macos \
-            CODE_SIGN_IDENTITY="-" \
-            CODE_SIGNING_REQUIRED=YES \
-            CODE_SIGNING_ALLOWED=YES \
-            DEVELOPMENT_TEAM="" \
-            PROVISIONING_PROFILE_SPECIFIER="" \
-            CODE_SIGN_ENTITLEMENTS="Runner/Release-CI.entitlements"
+          # Patch Xcode project for CI: disable sandbox, use ad-hoc signing
+          sed -i '' 's|Runner/Release\.entitlements|Runner/Release-CI.entitlements|g' macos/Runner.xcodeproj/project.pbxproj
+          sed -i '' 's|CODE_SIGN_STYLE = Automatic|CODE_SIGN_STYLE = Manual|g' macos/Runner.xcodeproj/project.pbxproj
+          sed -i '' 's|DEVELOPMENT_TEAM = .*;|DEVELOPMENT_TEAM = "";|g' macos/Runner.xcodeproj/project.pbxproj
+
+          flutter build macos --release
 
       - name: Create DMG
         if: steps.check.outputs.exists == 'false'
