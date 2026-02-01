@@ -9,6 +9,7 @@ import '../../../core/database/daos/sender_dao.dart';
 import '../../../core/database/daos/sync_state_dao.dart';
 import '../../../core/models/sync_progress.dart';
 import '../../../core/services/gmail_service.dart';
+import '../../../core/services/log_service.dart';
 import '../../../core/utils/category_engine.dart';
 import '../../../core/utils/email_parser.dart';
 
@@ -25,6 +26,14 @@ class SyncNotifier extends AsyncNotifier<SyncProgress> {
   /// Used by routing to show HomeScreen instead of InitialSyncScreen.
   bool get hasStartedFetching => _hasStartedFetching;
 
+  void _log(LogLevel level, String message) {
+    ref.read(logNotifierProvider.notifier).add(
+      level,
+      message,
+      source: 'Sync',
+    );
+  }
+
   @override
   FutureOr<SyncProgress> build() async {
     final syncStateDao = ref.read(syncStateDaoProvider);
@@ -37,6 +46,7 @@ class SyncNotifier extends AsyncNotifier<SyncProgress> {
       // Re-categorize senders once after upgrade to smart engine
       _recategorizeSenders();
       // Start incremental sync in background
+      _log(LogLevel.info, 'Starting incremental sync');
       _runIncrementalSync(syncState!.historyId);
       return const SyncProgress(phase: SyncPhase.complete);
     }
@@ -45,6 +55,10 @@ class SyncNotifier extends AsyncNotifier<SyncProgress> {
     final existingIds = await emailDao.getAllEmailIds();
     if (existingIds.isNotEmpty) {
       _hasStartedFetching = true;
+      _log(
+        LogLevel.info,
+        'Resuming sync — ${existingIds.length} emails already in DB',
+      );
       _resumeInitialSync(existingIds);
       return SyncProgress(
         phase: SyncPhase.fetching,
@@ -54,6 +68,7 @@ class SyncNotifier extends AsyncNotifier<SyncProgress> {
     }
 
     // No previous sync — run initial sync
+    _log(LogLevel.info, 'Starting initial sync');
     _runInitialSync();
     return const SyncProgress.listing();
   }
@@ -88,8 +103,8 @@ class SyncNotifier extends AsyncNotifier<SyncProgress> {
           await senderDao.updateCategory(sender.email, newCategory);
         }
       }
-    } catch (_) {
-      // Non-critical — don't block app startup
+    } catch (e) {
+      _log(LogLevel.error, 'Re-categorize senders failed: $e');
     }
   }
 
@@ -124,6 +139,8 @@ class SyncNotifier extends AsyncNotifier<SyncProgress> {
         );
       } while (pageToken != null);
 
+      _log(LogLevel.info, 'Listed ${allMessageIds.length} messages');
+
       // Fetch metadata in batches
       _hasStartedFetching = true;
       await _fetchAndStoreMessages(
@@ -135,6 +152,7 @@ class SyncNotifier extends AsyncNotifier<SyncProgress> {
         syncStateDao: syncStateDao,
       );
     } catch (e, st) {
+      _log(LogLevel.error, 'Initial sync failed: $e');
       state = AsyncValue.error(e, st);
     }
   }
@@ -169,6 +187,11 @@ class SyncNotifier extends AsyncNotifier<SyncProgress> {
           .where((id) => !existingSet.contains(id))
           .toList();
 
+      _log(
+        LogLevel.info,
+        'Resume sync: ${missingIds.length} missing of ${allMessageIds.length} total',
+      );
+
       // Fetch only the missing messages
       await _fetchAndStoreMessages(
         allMessageIds: missingIds,
@@ -181,6 +204,7 @@ class SyncNotifier extends AsyncNotifier<SyncProgress> {
         totalOverride: allMessageIds.length,
       );
     } catch (e, st) {
+      _log(LogLevel.error, 'Resume sync failed: $e');
       state = AsyncValue.error(e, st);
     }
   }
@@ -283,6 +307,7 @@ class SyncNotifier extends AsyncNotifier<SyncProgress> {
       }
 
       processed += batchIds.length;
+      _log(LogLevel.info, 'Fetched $processed/$total messages');
       state = AsyncValue.data(
         SyncProgress(
           phase: SyncPhase.fetching,
@@ -306,6 +331,7 @@ class SyncNotifier extends AsyncNotifier<SyncProgress> {
     );
 
     _hasCompletedInitialSync = true;
+    _log(LogLevel.info, 'Sync complete — $processed messages');
     state = AsyncValue.data(
       SyncProgress(
         phase: SyncPhase.complete,
@@ -355,6 +381,10 @@ class SyncNotifier extends AsyncNotifier<SyncProgress> {
           historyId = result.latestHistoryId ?? historyId;
         } catch (e) {
           // historyId expired — fallback to full sync
+          _log(
+            LogLevel.warning,
+            'History expired — falling back to full re-sync',
+          );
           _hasCompletedInitialSync = false;
           _hasStartedFetching = false;
           await syncStateDao.clearSyncState();
@@ -364,6 +394,14 @@ class SyncNotifier extends AsyncNotifier<SyncProgress> {
           return;
         }
       } while (pageToken != null);
+
+      if (addedIds.isNotEmpty || deletedIds.isNotEmpty) {
+        _log(
+          LogLevel.info,
+          'Incremental sync: ${addedIds.length} added, '
+          '${deletedIds.length} deleted',
+        );
+      }
 
       // Process added messages
       if (addedIds.isNotEmpty) {
@@ -444,11 +482,12 @@ class SyncNotifier extends AsyncNotifier<SyncProgress> {
         ),
       );
     } catch (e) {
-      // Incremental sync failed silently — user can manually refresh
+      _log(LogLevel.error, 'Incremental sync failed: $e');
     }
   }
 
   Future<void> refresh() async {
+    _log(LogLevel.info, 'Manual refresh triggered');
     final syncStateDao = ref.read(syncStateDaoProvider);
     final syncState = await syncStateDao.getSyncState();
     if (syncState?.historyId != null) {

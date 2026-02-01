@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/services/log_service.dart';
 import '../../../shared/widgets/keyboard_shortcuts_overlay.dart';
+import '../../../shared/widgets/log_panel.dart';
 import '../../../shared/widgets/master_detail_layout.dart';
 import '../../sender_analysis/providers/sender_providers.dart';
 import '../../sender_analysis/screens/sender_panel.dart';
@@ -17,6 +19,8 @@ class HomeScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final logPanelVisible = ref.watch(logPanelVisibleProvider);
+
     return CallbackShortcuts(
       bindings: {
         const SingleActivator(LogicalKeyboardKey.keyR, meta: true): () {
@@ -43,6 +47,10 @@ class HomeScreen extends ConsumerWidget {
             builder: (_) => const KeyboardShortcutsOverlay(),
           );
         },
+        const SingleActivator(LogicalKeyboardKey.keyL, meta: true): () {
+          ref.read(logPanelVisibleProvider.notifier).state =
+              !ref.read(logPanelVisibleProvider);
+        },
       },
       child: Focus(
         autofocus: true,
@@ -60,6 +68,19 @@ class HomeScreen extends ConsumerWidget {
                     context: context,
                     builder: (_) => const StatsScreen(),
                   );
+                },
+              ),
+              IconButton(
+                icon: Icon(
+                  Icons.terminal,
+                  color: logPanelVisible
+                      ? Theme.of(context).colorScheme.primary
+                      : null,
+                ),
+                tooltip: 'Toggle logs (Cmd+L)',
+                onPressed: () {
+                  ref.read(logPanelVisibleProvider.notifier).state =
+                      !logPanelVisible;
                 },
               ),
               IconButton(
@@ -91,9 +112,16 @@ class HomeScreen extends ConsumerWidget {
               const SizedBox(width: 8),
             ],
           ),
-          body: const MasterDetailLayout(
-            master: SenderPanel(),
-            detail: EmailPanel(),
+          body: Column(
+            children: [
+              const Expanded(
+                child: MasterDetailLayout(
+                  master: SenderPanel(),
+                  detail: EmailPanel(),
+                ),
+              ),
+              if (logPanelVisible) const LogPanel(),
+            ],
           ),
         ),
       ),

@@ -11,6 +11,7 @@ class KeyboardShortcutsOverlay extends StatelessWidget {
     ('Escape', 'Clear selection'),
     ('Delete', 'Delete selected emails'),
     ('Cmd + Backspace', 'Delete selected emails'),
+    ('Cmd + L', 'Toggle log panel'),
   ];
 
   @override

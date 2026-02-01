@@ -1,9 +1,10 @@
 class RateLimiter {
   final int unitsPerSecond;
+  final void Function(int requested, int available, int waitMs)? onWait;
   int _availableUnits;
   DateTime _lastRefill;
 
-  RateLimiter({required this.unitsPerSecond})
+  RateLimiter({required this.unitsPerSecond, this.onWait})
       : _availableUnits = unitsPerSecond,
         _lastRefill = DateTime.now();
 
@@ -15,6 +16,7 @@ class RateLimiter {
       while (_availableUnits < chunk) {
         final waitMs =
             ((chunk - _availableUnits) / unitsPerSecond * 1000).ceil();
+        onWait?.call(chunk, _availableUnits, waitMs);
         await Future<void>.delayed(Duration(milliseconds: waitMs));
         _refill();
       }

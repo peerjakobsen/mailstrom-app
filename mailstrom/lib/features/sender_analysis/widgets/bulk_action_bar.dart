@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/database/database.dart';
 import '../../../core/exceptions/error_mapper.dart';
 import '../../../core/services/gmail_service.dart';
+import '../../../core/services/log_service.dart';
 import '../../sync/providers/sync_provider.dart';
 import '../providers/sender_providers.dart';
 
@@ -168,6 +169,14 @@ class BulkActionBar extends ConsumerWidget {
     );
   }
 
+  void _log(WidgetRef ref, LogLevel level, String message) {
+    ref.read(logNotifierProvider.notifier).add(
+      level,
+      message,
+      source: 'Bulk',
+    );
+  }
+
   Future<void> _executeBulkAction(
     BuildContext context,
     WidgetRef ref, {
@@ -188,6 +197,14 @@ class BulkActionBar extends ConsumerWidget {
   }) async {
     final gmailService = ref.read(gmailServiceProvider);
     final emailDao = ref.read(emailDaoProvider);
+
+    final totalEmailCount = senders.fold<int>(0, (sum, s) => sum + s.emailCount);
+    _log(
+      ref,
+      LogLevel.info,
+      '${actionLabel.replaceFirst('ing', '')} ${senders.length} senders '
+      '($totalEmailCount emails)',
+    );
 
     var currentSender = '';
     var processedCount = 0;
@@ -252,11 +269,21 @@ class BulkActionBar extends ConsumerWidget {
     final failures = <String, String>{};
 
     for (final sender in senders) {
-      if (cancelled) break;
+      if (cancelled) {
+        _log(ref, LogLevel.info, 'Bulk action cancelled');
+        break;
+      }
       try {
+        final senderName = sender.displayName ?? sender.email;
         final emailIds = await emailDao.getEmailIdsBySender(sender.email);
 
-        currentSender = sender.displayName ?? sender.email;
+        _log(
+          ref,
+          LogLevel.info,
+          '$actionLabel $senderName (${emailIds.length} emails)',
+        );
+
+        currentSender = senderName;
         processedCount = 0;
         totalToProcess = emailIds.length;
         _dialogSetState?.call(() {});
@@ -272,9 +299,12 @@ class BulkActionBar extends ConsumerWidget {
         );
 
         await postProcess(ref, sender, emailIds);
+        _log(ref, LogLevel.info, 'Done: $senderName');
       } catch (e) {
         final senderName = sender.displayName ?? sender.email;
-        failures[senderName] = ErrorMapper.userMessage(e);
+        final errorMsg = ErrorMapper.userMessage(e);
+        _log(ref, LogLevel.error, 'Failed: $senderName — $errorMsg');
+        failures[senderName] = errorMsg;
       }
     }
 

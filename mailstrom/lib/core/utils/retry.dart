@@ -5,6 +5,8 @@ import '../exceptions/gmail_api_exception.dart';
 Future<T> retryWithBackoff<T>(
   Future<T> Function() fn, {
   int maxRetries = 5,
+  void Function(int attempt, int maxRetries, Duration delay, int? statusCode)?
+      onRetry,
 }) async {
   var attempt = 0;
   while (true) {
@@ -30,10 +32,14 @@ Future<T> retryWithBackoff<T>(
         // Use longer initial backoff for 429 (5s base) vs others (1s base)
         final baseMs = isThrottled ? 5000 : 1000;
         final delay = Duration(milliseconds: baseMs * (1 << (attempt - 1)));
-        debugPrint(
-          'Retry $attempt/$maxRetries after ${delay.inSeconds}s '
-          '(status: ${statusCode ?? 'unknown'})',
-        );
+        if (onRetry != null) {
+          onRetry(attempt, maxRetries, delay, statusCode);
+        } else {
+          debugPrint(
+            'Retry $attempt/$maxRetries after ${delay.inSeconds}s '
+            '(status: ${statusCode ?? 'unknown'})',
+          );
+        }
         await Future<void>.delayed(delay);
         continue;
       }
