@@ -1,0 +1,115 @@
+name: Release macOS DMG
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: mailstrom
+
+jobs:
+  release:
+    runs-on: macos-14
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract version
+        id: version
+        run: |
+          VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: //' | sed 's/+.*//')
+          echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Detected version: v${VERSION}"
+
+      - name: Check if release exists
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${{ steps.version.outputs.tag }}" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Release ${{ steps.version.outputs.tag }} already exists — skipping."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Write OAuth credentials
+        if: steps.check.outputs.exists == 'false'
+        run: echo '${{ secrets.GOOGLE_OAUTH_CREDENTIALS }}' > assets/google_oauth_credentials.json
+
+      - name: Set up Flutter
+        if: steps.check.outputs.exists == 'false'
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        if: steps.check.outputs.exists == 'false'
+        run: flutter pub get
+
+      - name: Run code generation
+        if: steps.check.outputs.exists == 'false'
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: Build macOS release
+        if: steps.check.outputs.exists == 'false'
+        run: flutter build macos --release
+
+      - name: Create DMG
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          APP_PATH="build/macos/Build/Products/Release/mailstrom.app"
+          DMG_NAME="Mailstrom-${{ steps.version.outputs.tag }}-macOS.dmg"
+
+          brew install create-dmg
+
+          # Try create-dmg for a polished DMG, fall back to hdiutil
+          create-dmg \
+            --volname "Mailstrom" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --icon "mailstrom.app" 150 190 \
+            --app-drop-link 450 190 \
+            --no-internet-enable \
+            "$DMG_NAME" \
+            "$APP_PATH" \
+          || {
+            echo "create-dmg failed, falling back to hdiutil..."
+            hdiutil create -volname "Mailstrom" -srcfolder "$APP_PATH" -ov -format UDZO "$DMG_NAME"
+          }
+
+          echo "DMG_PATH=${DMG_NAME}" >> "$GITHUB_ENV"
+
+      - name: Create GitHub Release
+        if: steps.check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" \
+            "$DMG_PATH" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Mailstrom ${{ steps.version.outputs.tag }}" \
+            --notes "$(cat <<'EOF'
+          ## Installation
+
+          1. Download **Mailstrom-${{ steps.version.outputs.tag }}-macOS.dmg**
+          2. Open the DMG and drag Mailstrom to Applications
+          3. Before first launch, run in Terminal:
+             ```
+             xattr -cr /Applications/mailstrom.app
+             ```
+          4. Open Mailstrom from Applications
+
+          > The `xattr` step is needed because the app is not yet code-signed.
+          EOF
+          )"
