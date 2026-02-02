@@ -146,7 +146,10 @@ class AuthService {
       );
 
       await _saveCredentials(credentials);
-      return authenticatedClient(http.Client(), credentials);
+      final autoClient =
+          autoRefreshingClient(clientId, credentials, http.Client());
+      autoClient.credentialUpdates.listen(_saveCredentials);
+      return autoClient;
     } catch (e) {
       if (e is AuthException) rethrow;
       throw AuthException('Sign in failed: $e', cause: e);
@@ -162,12 +165,18 @@ class AuthService {
         jsonDecode(json) as Map<String, dynamic>,
       );
 
-      if (credentials.accessToken.hasExpired) {
-        if (credentials.refreshToken == null) {
+      // No refresh token — can only use static client until it expires
+      if (credentials.refreshToken == null) {
+        if (credentials.accessToken.hasExpired) {
           await _storage.delete(_tokenKey);
           return null;
         }
-        final clientId = await _loadClientId();
+        return authenticatedClient(http.Client(), credentials);
+      }
+
+      final clientId = await _loadClientId();
+
+      if (credentials.accessToken.hasExpired) {
         final client = http.Client();
         try {
           final newCredentials = await refreshCredentials(
@@ -176,7 +185,10 @@ class AuthService {
             client,
           );
           await _saveCredentials(newCredentials);
-          return authenticatedClient(client, newCredentials);
+          final autoClient =
+              autoRefreshingClient(clientId, newCredentials, client);
+          autoClient.credentialUpdates.listen(_saveCredentials);
+          return autoClient;
         } catch (e) {
           client.close();
           await _storage.delete(_tokenKey);
@@ -184,7 +196,10 @@ class AuthService {
         }
       }
 
-      return authenticatedClient(http.Client(), credentials);
+      final autoClient =
+          autoRefreshingClient(clientId, credentials, http.Client());
+      autoClient.credentialUpdates.listen(_saveCredentials);
+      return autoClient;
     } catch (e) {
       return null;
     }

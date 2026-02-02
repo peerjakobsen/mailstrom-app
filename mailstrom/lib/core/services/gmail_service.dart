@@ -167,7 +167,12 @@ class GmailService {
             );
           }
 
-          return _parseBatchResponse(response.body, responseBoundary);
+          // Decode body as UTF-8 explicitly — response.body defaults to
+          // Latin-1 when Content-Type has no charset, corrupting non-ASCII
+          // characters in sender names, subjects, etc.
+          final responseBody = utf8.decode(response.bodyBytes);
+
+          return _parseBatchResponse(responseBody, responseBoundary);
         },
         onRetry: _onRetry,
       );
