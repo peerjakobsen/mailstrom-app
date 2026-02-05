@@ -51,6 +51,14 @@ class SenderSelectionNotifier extends StateNotifier<Set<String>> {
     state = {...state, ...emails};
   }
 
+  void selectByYear(List<SenderGroup> groups, int year) {
+    final emails = groups
+        .where((g) => g.mostRecentDate?.year == year)
+        .expand((g) => g.senders.map((s) => s.email))
+        .toList();
+    state = {...state, ...emails};
+  }
+
   void deselectAll(List<String> emails) {
     state = {...state}..removeAll(emails);
   }
@@ -61,6 +69,19 @@ class SenderSelectionNotifier extends StateNotifier<Set<String>> {
 
   bool isSelected(String email) => state.contains(email);
 }
+
+final availableYearsProvider = Provider<AsyncValue<List<int>>>((ref) {
+  final groupsAsync = ref.watch(filteredSenderListProvider);
+  return groupsAsync.whenData((groups) {
+    final years = <int>{};
+    for (final group in groups) {
+      if (group.mostRecentDate != null) {
+        years.add(group.mostRecentDate!.year);
+      }
+    }
+    return (years.toList()..sort()).reversed.toList();
+  });
+});
 
 final filteredSenderListProvider =
     Provider<AsyncValue<List<SenderGroup>>>((ref) {

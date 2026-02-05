@@ -82,6 +82,19 @@ class SenderTreeView extends ConsumerWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   _buildDomainUnsubscribeButton(context, ref, group),
+                  if (group.mostRecentDate != null)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: Text(
+                        '${group.mostRecentDate!.year}',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant
+                                  .withValues(alpha: 0.7),
+                            ),
+                      ),
+                    ),
                   Text(
                     '${group.totalEmails}',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(

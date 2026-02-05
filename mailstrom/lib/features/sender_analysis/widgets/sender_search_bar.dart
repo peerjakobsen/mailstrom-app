@@ -186,32 +186,103 @@ class _SenderSearchBarState extends ConsumerState<SenderSearchBar> {
           const SizedBox(height: 6),
           Align(
             alignment: Alignment.centerLeft,
-            child: FilterChip(
-              avatar: Icon(
-                Icons.unsubscribe_outlined,
-                size: 16,
-                color: unsubscribeReady
-                    ? colorScheme.onError
-                    : colorScheme.onSurfaceVariant,
-              ),
-              label: Text(
-                'Unsubscribe Ready',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: unsubscribeReady ? FontWeight.w600 : null,
-                  color: unsubscribeReady ? colorScheme.onError : null,
+            child: Row(
+              children: [
+                FilterChip(
+                  avatar: Icon(
+                    Icons.unsubscribe_outlined,
+                    size: 16,
+                    color: unsubscribeReady
+                        ? colorScheme.onError
+                        : colorScheme.onSurfaceVariant,
+                  ),
+                  label: Text(
+                    'Unsubscribe Ready',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: unsubscribeReady ? FontWeight.w600 : null,
+                      color: unsubscribeReady ? colorScheme.onError : null,
+                    ),
+                  ),
+                  selected: unsubscribeReady,
+                  selectedColor: colorScheme.error,
+                  onSelected: (_) {
+                    ref.read(unsubscribeReadyModeProvider.notifier).state = !unsubscribeReady;
+                  },
+                  visualDensity: VisualDensity.compact,
                 ),
-              ),
-              selected: unsubscribeReady,
-              selectedColor: colorScheme.error,
-              onSelected: (_) {
-                ref.read(unsubscribeReadyModeProvider.notifier).state = !unsubscribeReady;
-              },
-              visualDensity: VisualDensity.compact,
+                const SizedBox(width: 8),
+                _buildSelectByYearChip(ref, colorScheme),
+              ],
             ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildSelectByYearChip(WidgetRef ref, ColorScheme colorScheme) {
+    final yearsAsync = ref.watch(availableYearsProvider);
+    final groupsAsync = ref.watch(filteredSenderListProvider);
+
+    return yearsAsync.when(
+      data: (years) {
+        if (years.isEmpty) return const SizedBox.shrink();
+
+        return groupsAsync.when(
+          data: (groups) {
+            final yearCounts = <int, int>{};
+            for (final year in years) {
+              yearCounts[year] = groups
+                  .where((g) => g.mostRecentDate?.year == year)
+                  .length;
+            }
+
+            return PopupMenuButton<int>(
+              onSelected: (year) {
+                ref.read(senderSelectionProvider.notifier).selectByYear(groups, year);
+              },
+              itemBuilder: (context) => years.map((year) {
+                final count = yearCounts[year] ?? 0;
+                return PopupMenuItem<int>(
+                  value: year,
+                  child: Text('$year ($count groups)'),
+                );
+              }).toList(),
+              child: Chip(
+                avatar: Icon(
+                  Icons.calendar_month_outlined,
+                  size: 16,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+                label: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Select by Year',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Icon(
+                      Icons.arrow_drop_down,
+                      size: 18,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ],
+                ),
+                visualDensity: VisualDensity.compact,
+              ),
+            );
+          },
+          loading: () => const SizedBox.shrink(),
+          error: (e, s) => const SizedBox.shrink(),
+        );
+      },
+      loading: () => const SizedBox.shrink(),
+      error: (e, s) => const SizedBox.shrink(),
     );
   }
 
